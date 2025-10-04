@@ -331,6 +331,48 @@
             color: #1976d2;
             margin-bottom: 5px;
         }
+
+        /* Lightbox styles */
+        .lightbox {
+            display: none;
+            position: fixed;
+            z-index: 9999;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .lightbox.active {
+            display: flex;
+        }
+
+        .lightbox img {
+            max-width: 90%;
+            max-height: 90%;
+            object-fit: contain;
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+            cursor: pointer;
+        }
+
+        .lightbox-close {
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            color: white;
+            font-size: 40px;
+            font-weight: bold;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .lightbox-close:hover {
+            color: #ccc;
+        }
     </style>
 </head>
 <body>
@@ -383,17 +425,8 @@
             Select and load a model to begin...
         </div>
 
-        <div class="upload-section" style="margin-top: 10px;">
-            <h2>📸 Upload Images</h2>
-            <div class="file-input-wrapper">
-                <input type="file" id="imageInput" accept="image/*" multiple>
-                <label for="imageInput" class="file-input-label">Choose Images</label>
-            </div>
-            <div id="imagePreview" class="image-preview hidden"></div>
-        </div>
-
         <div class="query-section">
-            <h2>📝 Enter Text Descriptions</h2>
+            <h2>� Step 1: Enter Text Descriptions</h2>
             <p style="color: #666; margin-bottom: 15px;">Enter at least 2 text descriptions to compare with your images:</p>
             
             <div class="quick-examples">
@@ -408,9 +441,24 @@
                 <input type="text" class="text-input" data-index="0" placeholder="Text description 1 (e.g., 'a photo of a dog')">
                 <input type="text" class="text-input" data-index="1" placeholder="Text description 2 (e.g., 'a photo of a cat')">
             </div>
+        </div>
 
-            <button id="analyzeBtn" class="analyze-btn" disabled onclick="analyzeImage()">
-                Analyze Images & Text Similarity
+        <div class="upload-section" style="margin-top: 10px;">
+            <h2>📸 Step 2: Upload Images</h2>
+            <p style="color: #666; margin-bottom: 15px;">Images will be analyzed automatically once uploaded</p>
+            <div class="file-input-wrapper">
+                <input type="file" id="imageInput" accept="image/*" multiple>
+                <label for="imageInput" class="file-input-label">Choose Images</label>
+            </div>
+            <div id="uploadStatus" style="margin-top: 15px; padding: 10px; background: #e3f2fd; border-radius: 6px; display: none;">
+                <span id="uploadStatusText" style="color: #1976d2; font-weight: 600;"></span>
+                <button onclick="clearAllResults()" style="margin-left: 15px; padding: 6px 15px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Clear All Results</button>
+            </div>
+        </div>
+
+        <div style="margin-top: 20px; text-align: center;">
+            <button id="analyzeBtn" class="analyze-btn" disabled onclick="analyzeImage()" style="max-width: 400px;">
+                Re-Analyze / Update Results
             </button>
         </div>
 
@@ -666,56 +714,75 @@
         };
 
         // Handle image upload
-        document.getElementById('imageInput').addEventListener('change', function(e) {
+        document.getElementById('imageInput').addEventListener('change', async function(e) {
             const files = Array.from(e.target.files);
             if (files.length === 0) return;
 
-            files.forEach(file => {
-                const reader = new FileReader();
-                reader.onload = function(event) {
-                    const imageData = event.target.result;
-                    uploadedImages.push(imageData);
-                    
-                    const preview = document.getElementById('imagePreview');
-                    const imageItem = document.createElement('div');
-                    imageItem.className = 'image-item';
-                    imageItem.innerHTML = `
-                        <button class="remove-btn" onclick="removeImage(${uploadedImages.length - 1})">×</button>
-                        <img src="${imageData}" alt="Uploaded image ${uploadedImages.length}">
-                    `;
-                    preview.appendChild(imageItem);
-                    preview.classList.remove('hidden');
-                    
-                    // Enable analyze button if model is loaded
-                    if (clipModel) {
-                        document.getElementById('analyzeBtn').disabled = false;
-                    }
-                };
-                reader.readAsDataURL(file);
+            // Check for duplicates based on filename and file size
+            const existingFileKeys = new Set(
+                uploadedImages.map(img => `${img.name}_${img.size}`)
+            );
+            
+            // Filter out duplicates
+            const newFiles = files.filter(file => {
+                const fileKey = `${file.name}_${file.size}`;
+                return !existingFileKeys.has(fileKey);
             });
+            
+            const duplicateCount = files.length - newFiles.length;
+            
+            if (newFiles.length === 0) {
+                alert(`All ${files.length} selected image${files.length > 1 ? 's are' : ' is'} already uploaded.`);
+                return;
+            }
+            
+            // Load all new images
+            const loadPromises = newFiles.map(file => {
+                return new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = function(event) {
+                        uploadedImages.push({
+                            data: event.target.result,
+                            name: file.name,
+                            size: file.size
+                        });
+                        resolve();
+                    };
+                    reader.readAsDataURL(file);
+                });
+            });
+            
+            // Wait for all images to load
+            await Promise.all(loadPromises);
+            
+            // Show upload status
+            const uploadStatus = document.getElementById('uploadStatus');
+            const uploadStatusText = document.getElementById('uploadStatusText');
+            uploadStatus.style.display = 'block';
+            let statusMessage = `${uploadedImages.length} image${uploadedImages.length > 1 ? 's' : ''} uploaded (${newFiles.length} just added)`;
+            if (duplicateCount > 0) {
+                statusMessage += ` - ${duplicateCount} duplicate${duplicateCount > 1 ? 's' : ''} skipped`;
+            }
+            uploadStatusText.textContent = statusMessage;
+            
+            // Enable analyze button if model is loaded
+            if (clipModel) {
+                document.getElementById('analyzeBtn').disabled = false;
+                // Automatically analyze
+                analyzeImage();
+            }
         });
 
-        // Remove image
-        window.removeImage = function(index) {
-            uploadedImages.splice(index, 1);
-            const preview = document.getElementById('imagePreview');
-            preview.innerHTML = '';
-            
-            uploadedImages.forEach((imageData, i) => {
-                const imageItem = document.createElement('div');
-                imageItem.className = 'image-item';
-                imageItem.innerHTML = `
-                    <button class="remove-btn" onclick="removeImage(${i})">×</button>
-                    <img src="${imageData}" alt="Uploaded image ${i + 1}">
-                `;
-                preview.appendChild(imageItem);
-            });
-            
-            if (uploadedImages.length === 0) {
-                preview.classList.add('hidden');
-                document.getElementById('analyzeBtn').disabled = true;
-                document.getElementById('results').classList.add('hidden');
-            }
+
+
+        // Clear all results and uploaded images
+        window.clearAllResults = function() {
+            uploadedImages = [];
+            document.getElementById('uploadStatus').style.display = 'none';
+            document.getElementById('results').classList.add('hidden');
+            document.getElementById('resultsContent').innerHTML = '';
+            document.getElementById('analyzeBtn').disabled = true;
+            document.getElementById('imageInput').value = ''; // Reset file input
         };
 
         // Analyze image
@@ -764,7 +831,7 @@
                     progressText.textContent = `Processing image ${i + 1} of ${totalImages}...`;
 
                     // Run classification - pass the image URL directly
-                    const results = await clipModel(uploadedImages[i], texts);
+                    const results = await clipModel(uploadedImages[i].data, texts);
                     
                     // Display this image's results immediately
                     displaySingleResult(resultsContent, i, results);
@@ -784,7 +851,7 @@
                 }, 2000);
 
                 analyzeBtn.disabled = false;
-                analyzeBtn.textContent = 'Analyze Images & Text Similarity';
+                analyzeBtn.textContent = 'Re-Analyze / Update Results';
             } catch (error) {
                 console.error('Error during analysis:', error);
                 alert('Error during analysis: ' + error.message);
@@ -792,7 +859,7 @@
                 const progressContainer = document.getElementById('progressContainer');
                 progressContainer.classList.add('hidden');
                 analyzeBtn.disabled = false;
-                analyzeBtn.textContent = 'Analyze Images & Text Similarity';
+                analyzeBtn.textContent = 'Re-Analyze / Update Results';
             }
         };
 
@@ -810,10 +877,12 @@
             imagePreview.style.textAlign = 'center';
             imagePreview.style.marginBottom = '15px';
             imagePreview.innerHTML = `
-                <img src="${uploadedImages[imageIndex]}" 
+                <img src="${uploadedImages[imageIndex].data}" 
                      alt="Image ${imageIndex + 1}" 
-                     style="max-width: 200px; max-height: 200px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                <h3 style="color: #333; margin-top: 10px;">Image ${imageIndex + 1} Results</h3>
+                     style="max-width: 200px; max-height: 200px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer;"
+                     onclick="openLightbox('${uploadedImages[imageIndex].data}')"
+                     title="Click to view full size">
+                <h3 style="color: #333; margin-top: 10px;">Image ${imageIndex + 1}: ${uploadedImages[imageIndex].name}</h3>
             `;
             imageSection.appendChild(imagePreview);
             
@@ -984,6 +1053,25 @@
         // Initialize
         loadSavedTexts();
         // Model is loaded on demand via button
+
+        // Lightbox functionality
+        window.openLightbox = function(imageData) {
+            const lightbox = document.getElementById('lightbox');
+            const lightboxImg = document.getElementById('lightboxImg');
+            lightboxImg.src = imageData;
+            lightbox.classList.add('active');
+        };
+
+        window.closeLightbox = function() {
+            const lightbox = document.getElementById('lightbox');
+            lightbox.classList.remove('active');
+        };
     </script>
+
+    <!-- Lightbox overlay -->
+    <div id="lightbox" class="lightbox" onclick="closeLightbox()">
+        <span class="lightbox-close" onclick="closeLightbox()">&times;</span>
+        <img id="lightboxImg" src="" alt="Full size image" onclick="event.stopPropagation(); closeLightbox();">
+    </div>
 </body>
 </html>
