@@ -38,3 +38,33 @@ hf auth login
 # Download model files
 ./download-clip-model.sh
 ```
+
+
+## COCO-SSD Object Detection
+
+[**Demo**](https://stevekirks.github.io/ai-models-in-browser/coco-ssd.html)
+
+Detect and identify objects in images using the COCO-SSD model. All processing happens in the browser using TensorFlow.js.
+
+### Features
+
+- Upload multiple images from files or URLs
+- Real-time object detection with bounding boxes
+- Confidence scores for each detected object
+- No model download required (loaded from CDN)
+- Full-size image preview modal
+
+### Usage
+
+1. Visit the [demo](https://stevekirks.github.io/ai-models-in-browser/coco-ssd.html)
+2. Wait for the model to load automatically
+3. Add images by uploading files or entering URLs
+4. Click "Detect Objects in All Images" to analyze
+5. View detected objects with confidence scores
+
+### Run Locally
+
+```bash
+python -m http.server 8012
+# Visit http://localhost:8012/coco-ssd.html
+```
