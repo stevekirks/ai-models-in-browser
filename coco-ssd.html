@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COCO-SSD Object Detection</title>
+    <!-- Load TensorFlow.js. This is required to use coco-ssd model. -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <!-- Load the coco-ssd model. -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .loading-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #45a049);
+            transition: width 0.3s ease;
+            border-radius: 10px;
+        }
+        
+        .loading-text {
+            color: #666;
+            margin: 10px 0;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .content {
+            text-align: center;
+        }
+        
+        .image-upload-section {
+            margin: 20px 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            border-radius: 8px;
+        }
+        
+        .upload-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .upload-controls input[type="text"] {
+            flex: 1;
+            min-width: 200px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        .upload-controls button,
+        .upload-controls label {
+            padding: 8px 16px;
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .upload-controls button:hover,
+        .upload-controls label:hover {
+            background-color: #0b7dda;
+        }
+        
+        .upload-controls input[type="file"] {
+            display: none;
+        }
+        
+        .image-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .image-item {
+            position: relative;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            background: white;
+        }
+        
+        .image-item img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        .image-item img:hover {
+            transform: scale(1.05);
+        }
+        
+        .remove-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background-color: rgba(244, 67, 54, 0.9);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 25px;
+            height: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+        }
+        
+        .remove-btn:hover {
+            background-color: #d32f2f;
+        }
+        
+        .predictions {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            text-align: left;
+        }
+        
+        .prediction-item {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+            border-left: 4px solid #4CAF50;
+        }
+        
+        .prediction-item img {
+            max-width: 150px;
+            max-height: 100px;
+            object-fit: cover;
+            border-radius: 4px;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.9);
+            cursor: pointer;
+        }
+        
+        .modal-content {
+            margin: auto;
+            display: block;
+            max-width: 90%;
+            max-height: 90%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        
+        .modal.show {
+            display: block;
+        }
+        
+        .warning-message {
+            color: #ff9800;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        
+        #detectBtn {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 15px;
+        }
+        
+        #detectBtn:hover:not(:disabled) {
+            background-color: #45a049;
+        }
+        
+        #detectBtn:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <h1>COCO-SSD Object Detection Demo</h1>
+    
+    <div id="loadingContainer" class="loading-container">
+        <div class="loading-text">Loading COCO-SSD model...</div>
+        <div class="progress-bar">
+            <div id="progressFill" class="progress-fill" style="width: 0%"></div>
+        </div>
+        <div id="loadingStatus" class="loading-text">Initializing...</div>
+    </div>
+    
+    <div id="content" class="content hidden">
+        <div class="image-upload-section">
+            <h2>Add Images</h2>
+            <div class="upload-controls">
+                <input type="text" id="urlInput" placeholder="Enter image URL (e.g., https://example.com/image.jpg)">
+                <button onclick="addImageFromUrl()">Add from URL</button>
+                <label for="fileInput">Choose Files</label>
+                <input type="file" id="fileInput" accept="image/*" multiple onchange="addImagesFromFiles(event)">
+            </div>
+            
+            <div id="imageGallery" class="image-gallery"></div>
+        </div>
+        
+        <button id="detectBtn" onclick="detectObjects()">Detect Objects in All Images</button>
+        
+        <div id="predictions" class="predictions hidden">
+            <h2>Detection Results:</h2>
+            <div id="predictionsList"></div>
+        </div>
+    </div>
+    
+    <!-- Modal for full-size image -->
+    <div id="imageModal" class="modal" onclick="closeModal()">
+        <img id="modalImage" class="modal-content">
+    </div>
+
+    <!-- Place your code in the script tag below. You can also use an external .js file -->
+    <script>
+        let model = null;
+        let images = [];
+        let imageIdCounter = 0;
+        
+        // Simulate progress updates for better UX
+        function updateProgress(progress, status) {
+            const progressFill = document.getElementById('progressFill');
+            const loadingStatus = document.getElementById('loadingStatus');
+            
+            progressFill.style.width = progress + '%';
+            loadingStatus.textContent = status;
+        }
+        
+        // Load the model asynchronously with progress updates
+        async function loadModel() {
+            try {
+                updateProgress(10, 'Downloading model...');
+                
+                // Start loading the model
+                const modelPromise = cocoSsd.load();
+                
+                // Set a timeout to show warning if loading takes too long
+                const warningTimeout = setTimeout(() => {
+                    if (!model) {
+                        const loadingStatus = document.getElementById('loadingStatus');
+                        const warningDiv = document.createElement('div');
+                        warningDiv.className = 'warning-message';
+                        warningDiv.textContent = "Model is still loading, we didn't expect it to take this long...";
+                        loadingStatus.parentNode.appendChild(warningDiv);
+                    }
+                }, 15000); // Show warning after 15 seconds
+                
+                // Simulate progress updates while loading
+                const progressSteps = [
+                    { progress: 30, status: 'Loading model architecture...', delay: 500 },
+                    { progress: 60, status: 'Loading model weights...', delay: 1000 },
+                    { progress: 90, status: 'Initializing model...', delay: 500 }
+                ];
+                
+                // Create progress simulation
+                let currentStep = 0;
+                const progressInterval = setInterval(() => {
+                    if (currentStep < progressSteps.length) {
+                        const step = progressSteps[currentStep];
+                        updateProgress(step.progress, step.status);
+                        currentStep++;
+                    }
+                }, 800);
+                
+                // Wait for model to load
+                model = await modelPromise;
+                
+                // Clear the progress simulation and warning timeout
+                clearInterval(progressInterval);
+                clearTimeout(warningTimeout);
+                
+                // Complete loading
+                updateProgress(100, 'Model loaded successfully!');
+                
+                // Hide loading screen and show content after a brief delay
+                setTimeout(() => {
+                    document.getElementById('loadingContainer').classList.add('hidden');
+                    document.getElementById('content').classList.remove('hidden');
+                    
+                    // Add a default sample image
+                    addImageFromUrl('https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/800px-Cat03.jpg');
+                }, 500);
+                
+            } catch (error) {
+                console.error('Error loading model:', error);
+                updateProgress(0, 'Error loading model. Please refresh and try again.');
+            }
+        }
+        
+        // Add image from URL
+        function addImageFromUrl(url) {
+            if (!url) {
+                url = document.getElementById('urlInput').value.trim();
+            }
+            
+            if (!url) {
+                alert('Please enter a valid URL');
+                return;
+            }
+            
+            const imageId = imageIdCounter++;
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.src = url;
+            
+            img.onload = () => {
+                images.push({ id: imageId, element: img, src: url, type: 'url' });
+                renderGallery();
+                if (url === document.getElementById('urlInput').value.trim()) {
+                    document.getElementById('urlInput').value = '';
+                }
+            };
+            
+            img.onerror = () => {
+                alert('Failed to load image from URL. Please check the URL and CORS settings.');
+            };
+        }
+        
+        // Add images from file input
+        function addImagesFromFiles(event) {
+            const files = event.target.files;
+            
+            Array.from(files).forEach(file => {
+                if (!file.type.startsWith('image/')) {
+                    alert('Please select only image files');
+                    return;
+                }
+                
+                const reader = new FileReader();
+                const imageId = imageIdCounter++;
+                
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.src = e.target.result;
+                    
+                    img.onload = () => {
+                        images.push({ id: imageId, element: img, src: e.target.result, type: 'file', name: file.name });
+                        renderGallery();
+                    };
+                };
+                
+                reader.readAsDataURL(file);
+            });
+            
+            // Clear file input
+            event.target.value = '';
+        }
+        
+        // Remove image
+        function removeImage(imageId) {
+            images = images.filter(img => img.id !== imageId);
+            renderGallery();
+        }
+        
+        // Render image gallery
+        function renderGallery() {
+            const gallery = document.getElementById('imageGallery');
+            
+            if (images.length === 0) {
+                gallery.innerHTML = '<p style="grid-column: 1/-1; text-align: center; color: #999;">No images added yet. Add images using URL or upload from your device.</p>';
+                return;
+            }
+            
+            gallery.innerHTML = '';
+            
+            images.forEach(imgData => {
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'image-item';
+                
+                const img = document.createElement('img');
+                img.src = imgData.src;
+                img.alt = imgData.name || 'Image';
+                img.onclick = () => openModal(imgData.src);
+                
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'remove-btn';
+                removeBtn.innerHTML = '×';
+                removeBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    removeImage(imgData.id);
+                };
+                
+                itemDiv.appendChild(img);
+                itemDiv.appendChild(removeBtn);
+                gallery.appendChild(itemDiv);
+            });
+        }
+        
+        // Open modal with full-size image
+        function openModal(src) {
+            const modal = document.getElementById('imageModal');
+            const modalImg = document.getElementById('modalImage');
+            modal.classList.add('show');
+            modalImg.src = src;
+        }
+        
+        // Close modal
+        function closeModal() {
+            const modal = document.getElementById('imageModal');
+            modal.classList.remove('show');
+        }
+        
+        // Function to detect objects in all images
+        async function detectObjects() {
+            if (!model) {
+                alert('Model is not loaded yet!');
+                return;
+            }
+            
+            if (images.length === 0) {
+                alert('Please add at least one image first!');
+                return;
+            }
+            
+            const predictionsList = document.getElementById('predictionsList');
+            const predictionsDiv = document.getElementById('predictions');
+            const detectBtn = document.getElementById('detectBtn');
+            
+            detectBtn.textContent = 'Detecting...';
+            detectBtn.disabled = true;
+            predictionsList.innerHTML = '<p>Analyzing images...</p>';
+            predictionsDiv.classList.remove('hidden');
+            
+            try {
+                let allResults = '';
+                
+                // Detect objects in each image
+                for (let i = 0; i < images.length; i++) {
+                    const imgData = images[i];
+                    predictionsList.innerHTML = `<p>Analyzing image ${i + 1} of ${images.length}...</p>`;
+                    
+                    const predictions = await model.detect(imgData.element);
+                    
+                    console.log(`Predictions for image ${i + 1}:`, predictions);
+                    
+                    // Create result div for this image
+                    const resultDiv = document.createElement('div');
+                    resultDiv.className = 'prediction-item';
+                    
+                    let resultHtml = `<h3>Image ${i + 1} ${imgData.name ? '(' + imgData.name + ')' : ''}</h3>`;
+                    resultHtml += `<img src="${imgData.src}" alt="Analyzed image">`;
+                    
+                    if (predictions.length > 0) {
+                        resultHtml += '<ul>';
+                        predictions.forEach(prediction => {
+                            const confidence = (prediction.score * 100).toFixed(1);
+                            resultHtml += `<li><strong>${prediction.class}</strong> - ${confidence}% confidence</li>`;
+                        });
+                        resultHtml += '</ul>';
+                    } else {
+                        resultHtml += '<p>No objects detected in this image.</p>';
+                    }
+                    
+                    resultDiv.innerHTML = resultHtml;
+                    allResults += resultDiv.outerHTML;
+                }
+                
+                predictionsList.innerHTML = allResults;
+                
+            } catch (error) {
+                console.error('Error during detection:', error);
+                predictionsList.innerHTML = '<p style="color: red;">Error during detection. Check console for details.</p>';
+            } finally {
+                detectBtn.textContent = 'Detect Objects in All Images';
+                detectBtn.disabled = false;
+            }
+        }
+        
+        // Start loading the model when the page loads
+        window.addEventListener('load', () => {
+            loadModel();
+        });
+    </script>
+</body>
+</html>

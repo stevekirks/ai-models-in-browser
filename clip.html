@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:,">
+    <title>CLIP - Image & Text Understanding in Browser</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+
+        .upload-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .file-input-wrapper {
+            display: inline-block;
+            position: relative;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        .file-input-wrapper input[type=file] {
+            position: absolute;
+            left: -9999px;
+        }
+
+        .file-input-label {
+            display: inline-block;
+            padding: 12px 30px;
+            background: #667eea;
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .file-input-label:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+        }
+
+        .image-preview {
+            margin-top: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+        }
+
+        .image-item {
+            position: relative;
+            text-align: center;
+        }
+
+        .image-item img {
+            max-width: 250px;
+            max-height: 250px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .image-item img:hover {
+            transform: scale(1.05);
+        }
+
+        .remove-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: rgba(255, 0, 0, 0.8);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 25px;
+            height: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            line-height: 1;
+        }
+
+        .remove-btn:hover {
+            background: rgba(255, 0, 0, 1);
+        }
+
+        .query-section {
+            margin-bottom: 30px;
+        }
+
+        .query-section h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+
+        .text-queries {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .text-queries input {
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .text-queries input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .quick-examples {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .example-btn {
+            padding: 8px 16px;
+            background: #e0e7ff;
+            color: #667eea;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .example-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .analyze-btn {
+            width: 100%;
+            padding: 15px;
+            background: #764ba2;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .analyze-btn:hover:not(:disabled) {
+            background: #663399;
+            transform: translateY(-2px);
+        }
+
+        .analyze-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .results-section {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .results-section h2 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .result-item {
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .result-text {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .similarity-bar {
+            width: 100%;
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .similarity-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 10px;
+        }
+
+        .similarity-score {
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        .status.loading {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status.ready {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .progress-container {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .progress-bar-wrapper {
+            width: 100%;
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .progress-text {
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+
+        .info-box p {
+            color: #1976d2;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 CLIP in Browser</h1>
+        <p class="subtitle">Vision-Language AI Model - Image & Text Understanding</p>
+
+        <div class="info-box">
+            <p><strong>What is CLIP?</strong></p>
+            <p>A lightweight AI model that understands the relationship between images and text. Upload images and provide text descriptions to see how well they match!</p>
+            <p style="font-size: 0.9em; margin-top: 10px;">Uses <a href="https://github.com/openai/CLIP" target="_blank" style="color: #1976d2;">CLIP by OpenAI</a> via <a href="https://huggingface.co/Xenova/clip-vit-base-patch32" target="_blank" style="color: #1976d2;">Hugging Face</a> and <a href="https://github.com/xenova/transformers.js" target="_blank" style="color: #1976d2;">Transformers.js</a></p>
+        </div>
+
+        <div id="status" class="status loading">
+            Loading CLIP model...
+        </div>
+
+        <div class="upload-section">
+            <h2>📸 Upload Images</h2>
+            <div class="file-input-wrapper">
+                <input type="file" id="imageInput" accept="image/*" multiple>
+                <label for="imageInput" class="file-input-label">Choose Images</label>
+            </div>
+            <div id="imagePreview" class="image-preview hidden"></div>
+        </div>
+
+        <div class="query-section">
+            <h2>📝 Enter Text Descriptions</h2>
+            <p style="color: #666; margin-bottom: 15px;">Enter at least 2 text descriptions to compare with your images:</p>
+            
+            <div class="quick-examples">
+                <button class="example-btn" onclick="loadExample('animal')">Animal Examples</button>
+                <button class="example-btn" onclick="loadExample('scene')">Scene Examples</button>
+                <button class="example-btn" onclick="loadExample('object')">Object Examples</button>
+                <button class="example-btn" onclick="addTextInput()">+ Add More</button>
+                <button class="example-btn" onclick="clearTexts()">Clear All</button>
+            </div>
+
+            <div id="textQueriesContainer" class="text-queries">
+                <input type="text" class="text-input" data-index="0" placeholder="Text description 1 (e.g., 'a photo of a dog')">
+                <input type="text" class="text-input" data-index="1" placeholder="Text description 2 (e.g., 'a photo of a cat')">
+            </div>
+
+            <button id="analyzeBtn" class="analyze-btn" disabled onclick="analyzeImage()">
+                Analyze Images & Text Similarity
+            </button>
+        </div>
+
+        <div id="progressContainer" class="progress-container hidden">
+            <div class="progress-bar-wrapper">
+                <div id="progressBar" class="progress-bar-fill" style="width: 0%">0%</div>
+            </div>
+            <div id="progressText" class="progress-text">Processing images...</div>
+        </div>
+
+        <div id="results" class="results-section hidden">
+            <h2>📊 Results - Text Similarity Scores</h2>
+            <div id="resultsContent"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
+
+        // Configure environment
+        env.backends.onnx.wasm.numThreads = 1;
+
+        let clipModel = null;
+        let uploadedImages = [];
+
+        // Load the model with automatic local/remote detection
+        async function loadModel() {
+            const statusEl = document.getElementById('status');
+            
+            try {
+                // First, try to load from local files
+                statusEl.textContent = 'Checking for local model files...';
+                
+                env.allowLocalModels = true;
+                env.allowRemoteModels = false;
+                env.localModelPath = './models/';
+                
+                try {
+                    statusEl.textContent = 'Loading CLIP model from local files...';
+                    clipModel = await pipeline('zero-shot-image-classification', 
+                        'clip-vit-base-patch32');
+                    
+                    statusEl.className = 'status ready';
+                    statusEl.textContent = '✅ Model loaded from local files! Upload images to start.';
+                    console.log('Model loaded successfully from local files');
+                    return;
+                } catch (localError) {
+                    console.log('Local model not found, falling back to remote...', localError);
+                }
+                
+                // If local fails, load from Hugging Face CDN
+                statusEl.textContent = 'Loading CLIP model from Hugging Face (first time may take 30-60s)...';
+                
+                env.allowLocalModels = false;
+                env.allowRemoteModels = true;
+                
+                clipModel = await pipeline('zero-shot-image-classification', 
+                    'Xenova/clip-vit-base-patch32');
+                
+                statusEl.className = 'status ready';
+                statusEl.textContent = '✅ Model loaded from Hugging Face! Upload images to start.';
+                console.log('Model loaded successfully from Hugging Face');
+                
+            } catch (error) {
+                console.error('Error loading model:', error);
+                statusEl.className = 'status error';
+                statusEl.textContent = '❌ Error loading model: ' + error.message;
+            }
+        }
+
+        // Handle image upload
+        document.getElementById('imageInput').addEventListener('change', function(e) {
+            const files = Array.from(e.target.files);
+            if (files.length === 0) return;
+
+            files.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const imageData = event.target.result;
+                    uploadedImages.push(imageData);
+                    
+                    const preview = document.getElementById('imagePreview');
+                    const imageItem = document.createElement('div');
+                    imageItem.className = 'image-item';
+                    imageItem.innerHTML = `
+                        <button class="remove-btn" onclick="removeImage(${uploadedImages.length - 1})">×</button>
+                        <img src="${imageData}" alt="Uploaded image ${uploadedImages.length}">
+                    `;
+                    preview.appendChild(imageItem);
+                    preview.classList.remove('hidden');
+                    
+                    // Enable analyze button if model is loaded
+                    if (clipModel) {
+                        document.getElementById('analyzeBtn').disabled = false;
+                    }
+                };
+                reader.readAsDataURL(file);
+            });
+        });
+
+        // Remove image
+        window.removeImage = function(index) {
+            uploadedImages.splice(index, 1);
+            const preview = document.getElementById('imagePreview');
+            preview.innerHTML = '';
+            
+            uploadedImages.forEach((imageData, i) => {
+                const imageItem = document.createElement('div');
+                imageItem.className = 'image-item';
+                imageItem.innerHTML = `
+                    <button class="remove-btn" onclick="removeImage(${i})">×</button>
+                    <img src="${imageData}" alt="Uploaded image ${i + 1}">
+                `;
+                preview.appendChild(imageItem);
+            });
+            
+            if (uploadedImages.length === 0) {
+                preview.classList.add('hidden');
+                document.getElementById('analyzeBtn').disabled = true;
+                document.getElementById('results').classList.add('hidden');
+            }
+        };
+
+        // Analyze image
+        window.analyzeImage = async function() {
+            if (uploadedImages.length === 0 || !clipModel) {
+                alert('Please wait for the model to load and upload at least one image first.');
+                return;
+            }
+
+            // Get text inputs
+            const texts = [];
+            document.querySelectorAll('.text-input').forEach(input => {
+                const text = input.value.trim();
+                if (text) texts.push(text);
+            });
+
+            if (texts.length < 2) {
+                alert('Please enter at least 2 text descriptions for comparison.');
+                return;
+            }
+
+            try {
+                const analyzeBtn = document.getElementById('analyzeBtn');
+                analyzeBtn.disabled = true;
+                analyzeBtn.textContent = 'Analyzing...';
+
+                // Show progress bar and results section
+                const progressContainer = document.getElementById('progressContainer');
+                const progressBar = document.getElementById('progressBar');
+                const progressText = document.getElementById('progressText');
+                const resultsSection = document.getElementById('results');
+                const resultsContent = document.getElementById('resultsContent');
+                
+                progressContainer.classList.remove('hidden');
+                resultsSection.classList.remove('hidden');
+                resultsContent.innerHTML = '';
+
+                const totalImages = uploadedImages.length;
+
+                // Process each image sequentially
+                for (let i = 0; i < totalImages; i++) {
+                    // Update progress
+                    const progress = Math.round(((i) / totalImages) * 100);
+                    progressBar.style.width = `${progress}%`;
+                    progressBar.textContent = `${progress}%`;
+                    progressText.textContent = `Processing image ${i + 1} of ${totalImages}...`;
+
+                    // Run classification - pass the image URL directly
+                    const results = await clipModel(uploadedImages[i], texts);
+                    
+                    // Display this image's results immediately
+                    displaySingleResult(resultsContent, i, results);
+
+                    // Update progress to show completion
+                    const newProgress = Math.round(((i + 1) / totalImages) * 100);
+                    progressBar.style.width = `${newProgress}%`;
+                    progressBar.textContent = `${newProgress}%`;
+                }
+                
+                // Final progress update
+                progressText.textContent = `✅ Completed ${totalImages} image${totalImages > 1 ? 's' : ''}!`;
+                
+                // Hide progress bar after 2 seconds
+                setTimeout(() => {
+                    progressContainer.classList.add('hidden');
+                }, 2000);
+
+                analyzeBtn.disabled = false;
+                analyzeBtn.textContent = 'Analyze Images & Text Similarity';
+            } catch (error) {
+                console.error('Error during analysis:', error);
+                alert('Error during analysis: ' + error.message);
+                const analyzeBtn = document.getElementById('analyzeBtn');
+                const progressContainer = document.getElementById('progressContainer');
+                progressContainer.classList.add('hidden');
+                analyzeBtn.disabled = false;
+                analyzeBtn.textContent = 'Analyze Images & Text Similarity';
+            }
+        };
+
+        // Display single result
+        function displaySingleResult(resultsContent, imageIndex, results) {
+            const imageSection = document.createElement('div');
+            imageSection.style.marginBottom = '30px';
+            imageSection.style.padding = '20px';
+            imageSection.style.background = 'white';
+            imageSection.style.borderRadius = '10px';
+            imageSection.style.animation = 'fadeIn 0.3s ease-in';
+            
+            // Add image preview
+            const imagePreview = document.createElement('div');
+            imagePreview.style.textAlign = 'center';
+            imagePreview.style.marginBottom = '15px';
+            imagePreview.innerHTML = `
+                <img src="${uploadedImages[imageIndex]}" 
+                     alt="Image ${imageIndex + 1}" 
+                     style="max-width: 200px; max-height: 200px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <h3 style="color: #333; margin-top: 10px;">Image ${imageIndex + 1} Results</h3>
+            `;
+            imageSection.appendChild(imagePreview);
+            
+            // Sort by score descending
+            results.sort((a, b) => b.score - a.score);
+
+            // Filter results: always show top result, then only those above 30%
+            const filteredResults = results.filter((result, index) => {
+                const percentage = result.score * 100;
+                return index === 0 || (percentage >= 30 && index < 3);
+            });
+
+            filteredResults.forEach(result => {
+                const percentage = (result.score * 100).toFixed(1);
+                const item = document.createElement('div');
+                item.className = 'result-item';
+                item.innerHTML = `
+                    <div class="result-text">${result.label}</div>
+                    <div class="similarity-bar">
+                        <div class="similarity-fill" style="width: ${percentage}%">
+                            <span class="similarity-score">${percentage}%</span>
+                        </div>
+                    </div>
+                `;
+                imageSection.appendChild(item);
+            });
+            
+            resultsContent.appendChild(imageSection);
+        }
+
+        // Example presets
+        window.loadExample = function(type) {
+            clearTexts();
+            const examples = {
+                animal: [
+                    'a photo of a dog',
+                    'a photo of a cat',
+                    'a photo of a bird',
+                    'a photo of a horse',
+                    'a photo of a fish'
+                ],
+                scene: [
+                    'a photo of a beach',
+                    'a photo of a mountain',
+                    'a photo of a city street',
+                    'a photo of a forest',
+                    'a photo of a desert'
+                ],
+                object: [
+                    'a photo of a car',
+                    'a photo of a bicycle',
+                    'a photo of furniture',
+                    'a photo of food',
+                    'a photo of electronics'
+                ]
+            };
+
+            const texts = examples[type] || [];
+            
+            // Add more inputs if needed
+            const container = document.getElementById('textQueriesContainer');
+            while (container.children.length < texts.length) {
+                addTextInput(false);
+            }
+            
+            // Fill in the examples
+            const inputs = container.querySelectorAll('.text-input');
+            texts.forEach((text, index) => {
+                if (inputs[index]) {
+                    inputs[index].value = text;
+                    saveText(index, text);
+                }
+            });
+            
+            saveTextCount();
+        };
+
+        window.clearTexts = function() {
+            // Clear all text inputs
+            document.querySelectorAll('.text-input').forEach((input, index) => {
+                input.value = '';
+                localStorage.removeItem(`clipText${index}`);
+            });
+            
+            // Reset to 2 inputs
+            const container = document.getElementById('textQueriesContainer');
+            while (container.children.length > 2) {
+                container.removeChild(container.lastChild);
+            }
+            textInputCount = 2;
+            saveTextCount();
+            attachTextInputListeners();
+        };
+
+        let textInputCount = 2;
+
+        // Load saved text descriptions from localStorage
+        function loadSavedTexts() {
+            const savedCount = parseInt(localStorage.getItem('clipTextCount')) || 2;
+            const container = document.getElementById('textQueriesContainer');
+            
+            // Clear existing inputs except the first 2
+            while (container.children.length > savedCount) {
+                container.removeChild(container.lastChild);
+            }
+            
+            // Add inputs if needed
+            while (container.children.length < savedCount) {
+                addTextInput(false);
+            }
+            
+            // Load saved values
+            const inputs = container.querySelectorAll('.text-input');
+            inputs.forEach((input, index) => {
+                const savedText = localStorage.getItem(`clipText${index}`);
+                if (savedText) {
+                    input.value = savedText;
+                }
+            });
+            
+            textInputCount = savedCount;
+        }
+
+        // Save text description to localStorage
+        function saveText(index, value) {
+            localStorage.setItem(`clipText${index}`, value);
+        }
+
+        // Save text count
+        function saveTextCount() {
+            localStorage.setItem('clipTextCount', textInputCount);
+        }
+
+        // Add event listeners to text inputs
+        function attachTextInputListeners() {
+            document.querySelectorAll('.text-input').forEach((input, index) => {
+                input.removeEventListener('input', handleTextInput);
+                input.addEventListener('input', handleTextInput);
+                input.dataset.index = index;
+            });
+        }
+
+        function handleTextInput(e) {
+            const index = parseInt(e.target.dataset.index);
+            saveText(index, e.target.value);
+        }
+
+        // Add new text input
+        window.addTextInput = function(save = true) {
+            const container = document.getElementById('textQueriesContainer');
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'text-input';
+            input.dataset.index = textInputCount;
+            input.placeholder = `Text description ${textInputCount + 1}`;
+            container.appendChild(input);
+            textInputCount++;
+            
+            if (save) {
+                saveTextCount();
+            }
+            attachTextInputListeners();
+        };
+
+        // Initial setup
+        attachTextInputListeners();
+
+        // Initialize
+        loadSavedTexts();
+        loadModel();
+    </script>
+</body>
+</html>
