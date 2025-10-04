@@ -555,6 +555,32 @@
         async function tryLoadLocalModels() {
             const statusEl = document.getElementById('status');
             
+            // First check cache to avoid unnecessary fetch attempts
+            statusEl.textContent = 'Checking cache...';
+            const cachedModelName = await checkCachedModel();
+            
+            if (cachedModelName) {
+                // Try loading from cache first
+                try {
+                    statusEl.textContent = 'Loading from cached files...';
+                    
+                    env.allowLocalModels = true;
+                    env.allowRemoteModels = false;
+                    env.localModelPath = './';
+                    env.backends.onnx.wasm.proxy = false;
+                    
+                    clipModel = await pipeline('zero-shot-image-classification', `models/${cachedModelName}`);
+                    
+                    statusEl.className = 'status ready';
+                    statusEl.textContent = '✅ Model loaded from cache! Upload images to start.';
+                    return;
+                } catch (cacheError) {
+                    console.error('Cache load failed:', cacheError);
+                    // Fall through to try local files
+                }
+            }
+            
+            // Try loading from /models folder
             try {
                 statusEl.textContent = 'Checking for local model files...';
                 
@@ -569,32 +595,7 @@
                 statusEl.textContent = '✅ Model loaded from local files! Upload images to start.';
                 
             } catch (error) {
-                // Check if we have cached uploaded files
-                statusEl.textContent = 'Checking cache...';
-                const cachedModelName = await checkCachedModel();
-                
-                if (cachedModelName) {
-                    // Try loading from cache
-                    try {
-                        statusEl.textContent = 'Loading from cached files...';
-                        
-                        env.allowLocalModels = true;
-                        env.allowRemoteModels = false;
-                        env.localModelPath = './';
-                        env.backends.onnx.wasm.proxy = false;
-                        
-                        clipModel = await pipeline('zero-shot-image-classification', `models/${cachedModelName}`);
-                        
-                        statusEl.className = 'status ready';
-                        statusEl.textContent = '✅ Model loaded from cache! Upload images to start.';
-                        return;
-                    } catch (cacheError) {
-                        console.error('Cache load failed:', cacheError);
-                        // Cache load failed, fall through to upload UI
-                    }
-                }
-                
-                // No local files or cache, show upload option
+                // No local files and cache already tried above, show upload option
                 statusEl.className = 'status loading';
                 statusEl.textContent = 'Model files not found locally. Please upload model files below.';
                 document.getElementById('modelUploadSection').style.display = 'block';
@@ -647,7 +648,7 @@
                 clipModel = await pipeline('zero-shot-image-classification', `models/${baseFolderName}`);
                 
                 statusEl.className = 'status ready';
-                statusEl.textContent = '✅ Model loaded from uploaded files! Upload images to start.';
+                statusEl.textContent = '✅ Model loaded and cached! Upload images to start.';
                 
                 // Hide upload section after successful load
                 document.getElementById('modelUploadSection').style.display = 'none';
