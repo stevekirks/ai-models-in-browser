@@ -52,7 +52,7 @@
         }
 
         .upload-section {
-            margin-bottom: 30px;
+            margin-bottom: 20px;
             padding: 20px;
             background: #f8f9fa;
             border-radius: 10px;
@@ -344,11 +344,46 @@
             <p style="font-size: 0.9em; margin-top: 10px;">Uses <a href="https://github.com/openai/CLIP" target="_blank" style="color: #1976d2;">CLIP by OpenAI</a> via <a href="https://huggingface.co/Xenova/clip-vit-base-patch32" target="_blank" style="color: #1976d2;">Hugging Face</a> and <a href="https://github.com/xenova/transformers.js" target="_blank" style="color: #1976d2;">Transformers.js</a></p>
         </div>
 
-        <div id="status" class="status loading">
-            Loading CLIP model...
+        <div class="upload-section" id="modelUploadSection" style="display: none;">
+            <h2>📦 Upload Model Files</h2>
+            
+            <div class="info-box" style="background: #fff3cd; border-left-color: #ffc107;">
+                <p>HuggingFace's CORS policy prevents browsers from loading model files directly from their CDN, so there's a manual step to get the files.</p>
+                
+                <p style="margin-top: 15px;"><strong>How to get model files:</strong></p>
+                <ol style="margin: 10px 0; padding-left: 20px; color: #856404;">
+                    <li>Visit <a href="https://huggingface.co/Xenova/clip-vit-base-patch32" target="_blank" style="color: #856404; text-decoration: underline;">HuggingFace CLIP Model</a> (or alternatives like <code>clip-vit-base-patch16</code>, <code>clip-vit-large-patch14</code>)</li>
+                    <li>Download these files to a folder on your computer:
+                        <ul style="margin: 5px 0 5px 20px; font-size: 0.9em;">
+                            <li><code>config.json</code></li>
+                            <li><code>preprocessor_config.json</code></li>
+                            <li><code>tokenizer_config.json</code></li>
+                            <li><code>tokenizer.json</code></li>
+                            <li><code>vocab.json</code></li>
+                            <li><code>merges.txt</code></li>
+                            <li><code>onnx/model_quantized.onnx</code> (152 MB)</li>
+                        </ul>
+                    </li>
+                    <li>Click "Select Folder" below and choose your model folder</li>
+                </ol>
+                <p style="font-size: 0.85em; margin-top: 10px;"><strong>Tip:</strong> Keep the folder structure (files in root, onnx file in "onnx" subfolder)</p>
+            </div>
+            
+            <div style="margin: 20px 0;">
+                <input type="file" id="modelFiles" webkitdirectory directory multiple style="margin-bottom: 10px;">
+                <div id="uploadedFiles" style="font-size: 0.85em; color: #666; max-height: 100px; overflow-y: auto; margin-top: 10px;"></div>
+            </div>
+            
+            <button id="loadModelBtn" class="analyze-btn" onclick="loadModel()">
+                Load Model
+            </button>
         </div>
 
-        <div class="upload-section">
+        <div id="status" class="status loading">
+            Select and load a model to begin...
+        </div>
+
+        <div class="upload-section" style="margin-top: 10px;">
             <h2>📸 Upload Images</h2>
             <div class="file-input-wrapper">
                 <input type="file" id="imageInput" accept="image/*" multiple>
@@ -393,58 +428,241 @@
     </div>
 
     <script type="module">
-        import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
+        import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2';
 
-        // Configure environment
+        // Configure environment to use jsdelivr CDN (has proper CORS)
         env.backends.onnx.wasm.numThreads = 1;
+        env.useBrowserCache = true;
+        env.allowLocalModels = true;
+        env.allowRemoteModels = true;
+        
+        // Try to use jsdelivr as CDN for models (better CORS support)
+        env.remoteHost = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2/dist/';
+        env.remotePathTemplate = 'models/{model}/';
 
         let clipModel = null;
         let uploadedImages = [];
+        let uploadedModelFiles = {};
+        let modelFileMap = {};
+        
+        // Set up global fetch override for uploaded files
+        const originalFetch = window.fetch;
+        window.fetch = async function(url, options) {
+            const urlStr = url.toString();
+            
+            // Only intercept if we have uploaded files
+            if (Object.keys(modelFileMap).length > 0) {
+                // Try multiple ways to extract the path
+                const pathVariants = [];
+                
+                // 1. Path after 'models/'
+                if (urlStr.includes('models/')) {
+                    const afterModels = urlStr.split('models/')[1].split('?')[0];
+                    pathVariants.push(afterModels);
+                    // Also try without the first folder name
+                    if (afterModels.includes('/')) {
+                        pathVariants.push(afterModels.split('/').slice(1).join('/'));
+                    }
+                }
+                
+                // 2. Just the filename
+                pathVariants.push(urlStr.split('/').pop().split('?')[0]);
+                
+                // Try each path variant
+                for (const requestedPath of pathVariants) {
+                    if (modelFileMap[requestedPath]) {
+                        const file = modelFileMap[requestedPath];
+                        const content = await file.arrayBuffer();
+                        
+                        return new Response(content, {
+                            status: 200,
+                            headers: {
+                                'Content-Type': requestedPath.endsWith('.json') ? 'application/json' : 'application/octet-stream',
+                                'Content-Length': content.byteLength
+                            }
+                        });
+                    }
+                }
+            }
+            
+            // Use original fetch
+            return originalFetch(url, options);
+        };
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Try to load from local /models folder first
+            tryLoadLocalModels();
+            
+            // Handle file upload
+            document.getElementById('modelFiles').addEventListener('change', function(e) {
+                const files = Array.from(e.target.files);
+                uploadedModelFiles = {};
+                
+                files.forEach(file => {
+                    const path = file.webkitRelativePath || file.name;
+                    uploadedModelFiles[path] = file;
+                });
+                
+                // Check for required files
+                const hasOnnx = files.some(f => f.name.includes('.onnx'));
+                const hasConfig = files.some(f => f.name === 'config.json');
+                const hasPreprocessor = files.some(f => f.name === 'preprocessor_config.json');
+                
+                const fileList = document.getElementById('uploadedFiles');
+                let statusHtml = `<strong>✓ ${files.length} files selected</strong><br>`;
+                
+                if (!hasOnnx) statusHtml += '<span style="color: red;">⚠ Missing .onnx file!</span><br>';
+                if (!hasConfig) statusHtml += '<span style="color: red;">⚠ Missing config.json!</span><br>';
+                if (!hasPreprocessor) statusHtml += '<span style="color: red;">⚠ Missing preprocessor_config.json!</span><br>';
+                
+                statusHtml += files.slice(0, 5).map(f => f.webkitRelativePath || f.name).join('<br>') +
+                    (files.length > 5 ? '<br>...' : '');
+                    
+                fileList.innerHTML = statusHtml;
+            });
+        });
+        
+        // Check if model files exist in browser cache and extract model name
+        async function checkCachedModel() {
+            try {
+                const cache = await caches.open('transformers-cache');
+                const keys = await cache.keys();
+                
+                // Look for model files in cache and extract the model path
+                for (const req of keys) {
+                    const url = req.url;
+                    if (url.includes('config.json') && url.includes('/models/')) {
+                        // Extract model name from URL like "/models/models_man/config.json"
+                        const match = url.match(/\/models\/([^\/]+)\//);
+                        if (match) {
+                            const modelName = match[1];
+                            // Verify we also have the ONNX file
+                            const hasOnnx = keys.some(r => r.url.includes(modelName) && r.url.includes('model_quantized.onnx'));
+                            if (hasOnnx) {
+                                return modelName;
+                            }
+                        }
+                    }
+                }
+                return null;
+            } catch (e) {
+                return null;
+            }
+        }
 
-        // Load the model with automatic local/remote detection
-        async function loadModel() {
+        // Try loading from /models folder or cache
+        async function tryLoadLocalModels() {
             const statusEl = document.getElementById('status');
             
             try {
-                // First, try to load from local files
                 statusEl.textContent = 'Checking for local model files...';
                 
                 env.allowLocalModels = true;
                 env.allowRemoteModels = false;
                 env.localModelPath = './models/';
                 
-                try {
-                    statusEl.textContent = 'Loading CLIP model from local files...';
-                    clipModel = await pipeline('zero-shot-image-classification', 
-                        'clip-vit-base-patch32');
-                    
-                    statusEl.className = 'status ready';
-                    statusEl.textContent = '✅ Model loaded from local files! Upload images to start.';
-                    console.log('Model loaded successfully from local files');
-                    return;
-                } catch (localError) {
-                    console.log('Local model not found, falling back to remote...', localError);
-                }
-                
-                // If local fails, load from Hugging Face CDN
-                statusEl.textContent = 'Loading CLIP model from Hugging Face (first time may take 30-60s)...';
-                
-                env.allowLocalModels = false;
-                env.allowRemoteModels = true;
-                
                 clipModel = await pipeline('zero-shot-image-classification', 
-                    'Xenova/clip-vit-base-patch32');
+                    'clip-vit-base-patch32');
                 
                 statusEl.className = 'status ready';
-                statusEl.textContent = '✅ Model loaded from Hugging Face! Upload images to start.';
-                console.log('Model loaded successfully from Hugging Face');
+                statusEl.textContent = '✅ Model loaded from local files! Upload images to start.';
+                
+            } catch (error) {
+                // Check if we have cached uploaded files
+                statusEl.textContent = 'Checking cache...';
+                const cachedModelName = await checkCachedModel();
+                
+                if (cachedModelName) {
+                    // Try loading from cache
+                    try {
+                        statusEl.textContent = 'Loading from cached files...';
+                        
+                        env.allowLocalModels = true;
+                        env.allowRemoteModels = false;
+                        env.localModelPath = './';
+                        env.backends.onnx.wasm.proxy = false;
+                        
+                        clipModel = await pipeline('zero-shot-image-classification', `models/${cachedModelName}`);
+                        
+                        statusEl.className = 'status ready';
+                        statusEl.textContent = '✅ Model loaded from cache! Upload images to start.';
+                        return;
+                    } catch (cacheError) {
+                        console.error('Cache load failed:', cacheError);
+                        // Cache load failed, fall through to upload UI
+                    }
+                }
+                
+                // No local files or cache, show upload option
+                statusEl.className = 'status loading';
+                statusEl.textContent = 'Model files not found locally. Please upload model files below.';
+                document.getElementById('modelUploadSection').style.display = 'block';
+            }
+        }
+
+        // Load the model from uploaded files
+        window.loadModel = async function() {
+            const statusEl = document.getElementById('status');
+            const loadBtn = document.getElementById('loadModelBtn');
+            
+            try {
+                loadBtn.disabled = true;
+                loadBtn.textContent = 'Loading...';
+                clipModel = null;
+                
+                // Check if files were uploaded
+                if (Object.keys(uploadedModelFiles).length === 0) {
+                    throw new Error('Please select model files first');
+                }
+                
+                statusEl.className = 'status loading';
+                statusEl.textContent = 'Processing uploaded files...';
+                
+                // Get the base folder name (e.g., "clip-vit-base-patch32")
+                const firstFile = Object.keys(uploadedModelFiles)[0];
+                const baseFolderName = firstFile.split('/')[0];
+                
+                // Populate global file map for fetch interception
+                modelFileMap = {};
+                for (const [path, file] of Object.entries(uploadedModelFiles)) {
+                    const parts = path.split('/');
+                    const relativePath = parts.slice(1).join('/'); // Remove base folder
+                    const filename = parts[parts.length - 1]; // Just the filename
+                    
+                    // Store by multiple keys for flexible matching
+                    modelFileMap[relativePath] = file;
+                    modelFileMap[filename] = file;
+                    modelFileMap[`${baseFolderName}/${relativePath}`] = file;
+                }
+                
+                statusEl.textContent = 'Loading model from uploaded files...';
+                
+                env.allowLocalModels = true;
+                env.allowRemoteModels = false;
+                env.localModelPath = './';
+                env.backends.onnx.wasm.proxy = false;
+                
+                // Use the model path that matches our fetch intercept
+                clipModel = await pipeline('zero-shot-image-classification', `models/${baseFolderName}`);
+                
+                statusEl.className = 'status ready';
+                statusEl.textContent = '✅ Model loaded from uploaded files! Upload images to start.';
+                
+                // Hide upload section after successful load
+                document.getElementById('modelUploadSection').style.display = 'none';
+                
+                loadBtn.disabled = false;
+                loadBtn.textContent = 'Load Model';
                 
             } catch (error) {
                 console.error('Error loading model:', error);
                 statusEl.className = 'status error';
-                statusEl.textContent = '❌ Error loading model: ' + error.message;
+                statusEl.innerHTML = `❌ Could not load model<br><small>${error.message}</small>`;
+                loadBtn.disabled = false;
+                loadBtn.textContent = 'Load Model';
             }
-        }
+        };
 
         // Handle image upload
         document.getElementById('imageInput').addEventListener('change', function(e) {
@@ -764,7 +982,7 @@
 
         // Initialize
         loadSavedTexts();
-        loadModel();
+        // Model is loaded on demand via button
     </script>
 </body>
 </html>
