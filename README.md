@@ -4,7 +4,7 @@ Running AI models client-side in the browser using JavaScript.
 
 ## CLIP Image-Text Matching
 
-[**Demo**](https://stevekirks.github.io/models-in-browser/clip.html)
+[**Demo**](https://stevekirks.github.io/ai-models-in-browser/clip.html)
 
 Upload images and compare them against text descriptions using OpenAI's CLIP model. Model is downloaded and all processing happens in the browser - client-side.
 
